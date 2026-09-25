@@ -1,9 +1,9 @@
 #include "lcd_display.h"
 #include <vector>
-#include <font_awesome_symbols.h>
-#include <esp_log.h>
-#include <esp_err.h>
-#include <esp_lvgl_port.h>
+#include "font_awesome_symbols.h"
+#include "esp_log.h"
+#include "esp_err.h"
+#include "esp_lvgl_port.h"
 #include "assets/lang_config.h"
 #include <cstring>
 #include <ctime>
@@ -40,25 +40,24 @@
 
 LV_FONT_DECLARE(font_awesome_30_4);
 
-// 时钟标签指针（全局，供定时器回调使用）
-static lv_obj_t* s_clock_time_label = nullptr;
-static lv_obj_t* s_clock_date_label = nullptr;
+// 时钟标签指针（供 LVGL 定时器回调使用）
+static lv_obj_t* s_clock_time_label = NULL;
+static lv_obj_t* s_clock_date_label = NULL;
+static lv_obj_t* s_clock_container = NULL;
 
 // LVGL 定时器回调：每秒更新时钟
 static void clock_update_timer_cb(lv_timer_t* timer) {
     (void)timer;
-    if (s_clock_time_label == nullptr || s_clock_date_label == nullptr) {
+    if (s_clock_time_label == NULL || s_clock_date_label == NULL) {
         return;
     }
-    time_t now = time(nullptr);
+    time_t now = time(NULL);
     struct tm* timeinfo = localtime(&now);
 
-    // 时间 HH:MM
     char time_buf[16];
     strftime(time_buf, sizeof(time_buf), "%H:%M", timeinfo);
     lv_label_set_text(s_clock_time_label, time_buf);
 
-    // 日期 M月D日 星期X
     const char* weekdays[] = {"日", "一", "二", "三", "四", "五", "六"};
     char date_buf[32];
     snprintf(date_buf, sizeof(date_buf), "%d月%d日 星期%s",
@@ -72,23 +71,28 @@ SpiLcdDisplay::SpiLcdDisplay(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_h
     : LcdDisplay(panel_io, panel, fonts) {
     width_ = width;
     height_ = height;
+
     std::vector<uint16_t> buffer(width_, 0xFFFF);
     for (int y = 0; y < height_; y++) {
         esp_lcd_panel_draw_bitmap(panel_, 0, y, width_, y + 1, buffer.data());
     }
+
     ESP_LOGI(TAG, "Turning display on");
     ESP_ERROR_CHECK(esp_lcd_panel_disp_on_off(panel_, true));
+
     ESP_LOGI(TAG, "Initialize LVGL library");
     lv_init();
+
     ESP_LOGI(TAG, "Initialize LVGL port");
     lvgl_port_cfg_t port_cfg = ESP_LVGL_PORT_INIT_CONFIG();
     port_cfg.task_priority = 1;
     lvgl_port_init(&port_cfg);
+
     ESP_LOGI(TAG, "Adding LCD screen");
     const lvgl_port_display_cfg_t display_cfg = {
         .io_handle = panel_io_,
         .panel_handle = panel_,
-        .control_handle = nullptr,
+        .control_handle = NULL,
         .buffer_size = static_cast<uint32_t>(width_ * 10),
         .double_buffer = false,
         .trans_size = 0,
@@ -110,34 +114,41 @@ SpiLcdDisplay::SpiLcdDisplay(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_h
             .direct_mode = 0,
         },
     };
+
     display_ = lvgl_port_add_disp(&display_cfg);
-    if (display_ == nullptr) {
+    if (display_ == NULL) {
         ESP_LOGE(TAG, "Failed to add display");
         return;
     }
+
     if (offset_x != 0 || offset_y != 0) {
         lv_display_set_offset(display_, offset_x, offset_y);
     }
+
     SetupUI();
 }
 
 RgbLcdDisplay::RgbLcdDisplay(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_handle_t panel,
-                             int width, int height, int offset_x, int offset_y,
-                             bool mirror_x, bool mirror_y, bool swap_xy,
-                             DisplayFonts fonts)
+                            int width, int height, int offset_x, int offset_y,
+                            bool mirror_x, bool mirror_y, bool swap_xy,
+                            DisplayFonts fonts)
     : LcdDisplay(panel_io, panel, fonts) {
     width_ = width;
     height_ = height;
+
     std::vector<uint16_t> buffer(width_, 0xFFFF);
     for (int y = 0; y < height_; y++) {
         esp_lcd_panel_draw_bitmap(panel_, 0, y, width_, y + 1, buffer.data());
     }
+
     ESP_LOGI(TAG, "Initialize LVGL library");
     lv_init();
+
     ESP_LOGI(TAG, "Initialize LVGL port");
     lvgl_port_cfg_t port_cfg = ESP_LVGL_PORT_INIT_CONFIG();
     port_cfg.task_priority = 1;
     lvgl_port_init(&port_cfg);
+
     ESP_LOGI(TAG, "Adding LCD screen");
     const lvgl_port_display_cfg_t display_cfg = {
         .io_handle = panel_io_,
@@ -158,43 +169,47 @@ RgbLcdDisplay::RgbLcdDisplay(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_h
             .direct_mode = 1,
         },
     };
+
     const lvgl_port_display_rgb_cfg_t rgb_cfg = {
         .flags = {
             .bb_mode = true,
             .avoid_tearing = true,
         }
     };
+
     display_ = lvgl_port_add_disp_rgb(&display_cfg, &rgb_cfg);
-    if (display_ == nullptr) {
+    if (display_ == NULL) {
         ESP_LOGE(TAG, "Failed to add RGB display");
         return;
     }
+
     if (offset_x != 0 || offset_y != 0) {
         lv_display_set_offset(display_, offset_x, offset_y);
     }
+
     SetupUI();
 }
 
 LcdDisplay::~LcdDisplay() {
-    if (content_ != nullptr) {
+    if (content_ != NULL) {
         lv_obj_del(content_);
     }
-    if (status_bar_ != nullptr) {
+    if (status_bar_ != NULL) {
         lv_obj_del(status_bar_);
     }
-    if (side_bar_ != nullptr) {
+    if (side_bar_ != NULL) {
         lv_obj_del(side_bar_);
     }
-    if (container_ != nullptr) {
+    if (container_ != NULL) {
         lv_obj_del(container_);
     }
-    if (display_ != nullptr) {
+    if (display_ != NULL) {
         lv_display_delete(display_);
     }
-    if (panel_ != nullptr) {
+    if (panel_ != NULL) {
         esp_lcd_panel_del(panel_);
     }
-    if (panel_io_ != nullptr) {
+    if (panel_io_ != NULL) {
         esp_lcd_panel_io_del(panel_io_);
     }
 }
@@ -246,37 +261,36 @@ void LcdDisplay::SetupUI() {
     lv_obj_set_flex_align(content_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
     lv_obj_set_style_pad_row(content_, 10, 0);
 
-    chat_message_label_ = nullptr;
+    chat_message_label_ = NULL;
 
     // ===== 待机时钟：屏幕中央显示时间和日期 =====
-    lv_obj_t* clock_container = lv_obj_create(content_);
-    lv_obj_set_size(clock_container, LV_HOR_RES, LV_VER_RES - fonts_.emoji_font->line_height - 20);
-    lv_obj_set_style_bg_opa(clock_container, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(clock_container, 0, 0);
-    lv_obj_set_style_pad_all(clock_container, 0, 0);
-    lv_obj_clear_flag(clock_container, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_center(clock_container);
-    lv_obj_set_flex_flow(clock_container, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(clock_container, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    s_clock_container = lv_obj_create(content_);
+    lv_obj_set_size(s_clock_container, LV_HOR_RES - 10, LV_VER_RES - fonts_.emoji_font->line_height - 30);
+    lv_obj_set_style_bg_opa(s_clock_container, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(s_clock_container, 0, 0);
+    lv_obj_set_style_pad_all(s_clock_container, 0, 0);
+    lv_obj_clear_flag(s_clock_container, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_flex_flow(s_clock_container, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(s_clock_container, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
     // 时间（大字）
-    s_clock_time_label = lv_label_create(clock_container);
+    s_clock_time_label = lv_label_create(s_clock_container);
     lv_obj_set_style_text_font(s_clock_time_label, fonts_.emoji_font, 0);
     lv_obj_set_style_text_color(s_clock_time_label, CLOCK_TIME_COLOR, 0);
     lv_label_set_text(s_clock_time_label, "--:--");
 
     // 日期（小字）
-    s_clock_date_label = lv_label_create(clock_container);
+    s_clock_date_label = lv_label_create(s_clock_container);
     lv_obj_set_style_text_font(s_clock_date_label, fonts_.text_font, 0);
     lv_obj_set_style_text_color(s_clock_date_label, CLOCK_DATE_COLOR, 0);
-    lv_label_set_text(s_clock_date_label, "加载中...");
+    lv_label_set_text(s_clock_date_label, "Loading...");
 
     // 立即更新一次时钟
-    clock_update_timer_cb(nullptr);
+    clock_update_timer_cb(NULL);
     // 启动 LVGL 定时器，每秒更新一次
-    lv_timer_create(clock_update_timer_cb, 1000, nullptr);
+    lv_timer_create(clock_update_timer_cb, 1000, NULL);
 
-    /* Status bar */
+    /* Status bar 内容 */
     lv_obj_set_flex_flow(status_bar_, LV_FLEX_FLOW_ROW);
     lv_obj_set_style_pad_all(status_bar_, 0, 0);
     lv_obj_set_style_border_width(status_bar_, 0, 0);
@@ -337,14 +351,14 @@ void LcdDisplay::SetupUI() {
 
 void LcdDisplay::SetChatMessage(const char* role, const char* content) {
     DisplayLockGuard lock(this);
-    if (content_ == nullptr) {
+    if (content_ == NULL) {
         return;
     }
     if (strlen(content) == 0) return;
 
     // 收到新消息时，隐藏待机时钟
-    if (s_clock_time_label != nullptr) {
-        lv_obj_add_flag(lv_obj_get_parent(s_clock_time_label), LV_OBJ_FLAG_HIDDEN);
+    if (s_clock_container != NULL) {
+        lv_obj_add_flag(s_clock_container, LV_OBJ_FLAG_HIDDEN);
     }
 
     // Create a message bubble
@@ -379,6 +393,7 @@ void LcdDisplay::SetChatMessage(const char* role, const char* content) {
     lv_obj_set_height(msg_bubble, LV_SIZE_CONTENT);
 
     if (strcmp(role, "user") == 0) {
+        // 用户消息：绿色气泡，右对齐
         lv_obj_set_style_bg_color(msg_bubble, USER_BUBBLE_COLOR, 0);
         lv_obj_set_style_text_color(msg_text, TEXT_COLOR, 0);
         lv_obj_set_width(msg_bubble, LV_SIZE_CONTENT);
@@ -386,6 +401,7 @@ void LcdDisplay::SetChatMessage(const char* role, const char* content) {
         lv_obj_set_style_margin_right(msg_bubble, 10, 0);
         lv_obj_set_style_flex_grow(msg_bubble, 0, 0);
     } else if (strcmp(role, "assistant") == 0) {
+        // AI助手消息：白色气泡，左对齐
         lv_obj_set_style_bg_color(msg_bubble, ASSISTANT_BUBBLE_COLOR, 0);
         lv_obj_set_style_text_color(msg_text, TEXT_COLOR, 0);
         lv_obj_set_width(msg_bubble, LV_SIZE_CONTENT);
@@ -393,6 +409,7 @@ void LcdDisplay::SetChatMessage(const char* role, const char* content) {
         lv_obj_set_style_margin_left(msg_bubble, 0, 0);
         lv_obj_set_style_flex_grow(msg_bubble, 0, 0);
     } else if (strcmp(role, "system") == 0) {
+        // 系统消息：灰色，居中
         lv_obj_set_style_bg_color(msg_bubble, SYSTEM_BUBBLE_COLOR, 0);
         lv_obj_set_style_text_color(msg_text, SYSTEM_TEXT_COLOR, 0);
         lv_obj_set_width(msg_bubble, LV_SIZE_CONTENT);
@@ -401,6 +418,7 @@ void LcdDisplay::SetChatMessage(const char* role, const char* content) {
     }
 
     if (strcmp(role, "user") == 0) {
+        // 用户消息：全宽容器内右对齐
         lv_obj_t* container = lv_obj_create(content_);
         lv_obj_set_width(container, LV_HOR_RES);
         lv_obj_set_height(container, LV_SIZE_CONTENT);
@@ -411,6 +429,7 @@ void LcdDisplay::SetChatMessage(const char* role, const char* content) {
         lv_obj_align(msg_bubble, LV_ALIGN_RIGHT_MID, -10, 0);
         lv_obj_scroll_to_view_recursive(container, LV_ANIM_ON);
     } else if (strcmp(role, "system") == 0) {
+        // 系统消息：全宽容器内居中
         lv_obj_t* container = lv_obj_create(content_);
         lv_obj_set_width(container, LV_HOR_RES);
         lv_obj_set_height(container, LV_SIZE_CONTENT);
@@ -421,16 +440,18 @@ void LcdDisplay::SetChatMessage(const char* role, const char* content) {
         lv_obj_align(msg_bubble, LV_ALIGN_CENTER, 0, 0);
         lv_obj_scroll_to_view_recursive(container, LV_ANIM_ON);
     } else {
+        // AI助手消息：左对齐
         lv_obj_align(msg_bubble, LV_ALIGN_LEFT_MID, 0, 0);
         lv_obj_scroll_to_view_recursive(msg_bubble, LV_ANIM_ON);
     }
 
     chat_message_label_ = msg_text;
 
+    // 限制最大消息数
     uint32_t msg_count = lv_obj_get_child_cnt(content_);
     while (msg_count >= MAX_MESSAGES) {
         lv_obj_t* oldest_msg = lv_obj_get_child(content_, 0);
-        if (oldest_msg != nullptr) {
+        if (oldest_msg != NULL) {
             lv_obj_del(oldest_msg);
             msg_count--;
         } else {
@@ -474,9 +495,9 @@ void LcdDisplay::SetupUI() {
     emotion_label_ = lv_label_create(content_);
     lv_obj_set_style_text_font(emotion_label_, &font_awesome_30_4, 0);
     lv_obj_set_style_text_color(emotion_label_, TEXT_COLOR, 0);
-    lv_obj_set_text(emotion_label_, FONT_AWESOME_AI_CHIP);
+    lv_label_set_text(emotion_label_, FONT_AWESOME_AI_CHIP);
 
-    // 待机时钟（非微信模式也加）
+    // 待机时钟
     s_clock_time_label = lv_label_create(content_);
     lv_obj_set_style_text_font(s_clock_time_label, fonts_.emoji_font, 0);
     lv_obj_set_style_text_color(s_clock_time_label, CLOCK_TIME_COLOR, 0);
@@ -485,15 +506,15 @@ void LcdDisplay::SetupUI() {
     s_clock_date_label = lv_label_create(content_);
     lv_obj_set_style_text_font(s_clock_date_label, fonts_.text_font, 0);
     lv_obj_set_style_text_color(s_clock_date_label, CLOCK_DATE_COLOR, 0);
-    lv_label_set_text(s_clock_date_label, "加载中...");
+    lv_label_set_text(s_clock_date_label, "Loading...");
 
-    clock_update_timer_cb(nullptr);
-    lv_timer_create(clock_update_timer_cb, 1000, nullptr);
+    clock_update_timer_cb(NULL);
+    lv_timer_create(clock_update_timer_cb, 1000, NULL);
 
     chat_message_label_ = lv_label_create(content_);
     lv_label_set_text(chat_message_label_, "");
     lv_obj_set_width(chat_message_label_, LV_HOR_RES * 0.9);
-    lv_obj_set_long_mode(chat_message_label_, LV_LABEL_LONG_WRAP);
+    lv_label_set_long_mode(chat_message_label_, LV_LABEL_LONG_WRAP);
     lv_obj_set_style_text_align(chat_message_label_, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_style_text_color(chat_message_label_, TEXT_COLOR, 0);
 
@@ -552,47 +573,54 @@ void LcdDisplay::SetEmotion(const char* emotion) {
         const char* icon;
         const char* text;
     };
-    static const std::vector<Emotion> emotions = {
-        {"😶", "neutral"},
-        {"🙂", "happy"},
-        {"😆", "laughing"},
-        {"😂", "funny"},
-        {"😔", "sad"},
-        {"😠", "angry"},
-        {"😭", "crying"},
-        {"😍", "loving"},
-        {"😳", "embarrassed"},
-        {"😯", "surprised"},
-        {"😱", "shocked"},
-        {"🤔", "thinking"},
-        {"😉", "winking"},
-        {"😎", "cool"},
-        {"😌", "relaxed"},
-        {"🤤", "delicious"},
-        {"😘", "kissy"},
-        {"😏", "confident"},
-        {"😴", "sleepy"},
-        {"😜", "silly"},
-        {"🙄", "confused"}
+    static const Emotion emotions[] = {
+        {"\xEF\x98\xB6", "neutral"},
+        {"\xEF\x99\x82", "happy"},
+        {"\xEF\x98\x86", "laughing"},
+        {"\xEF\x98\x82", "funny"},
+        {"\xEF\x98\x94", "sad"},
+        {"\xEF\x98\xA0", "angry"},
+        {"\xEF\x98\xAD", "crying"},
+        {"\xEF\x98\x8D", "loving"},
+        {"\xEF\x98\xB3", "embarrassed"},
+        {"\xEF\x99\xAF", "surprised"},
+        {"\xEF\x98\xB1", "shocked"},
+        {"\xF0\x9F\xA4\x94", "thinking"},
+        {"\xEF\x98\x89", "winking"},
+        {"\xEF\x98\x8E", "cool"},
+        {"\xEF\x98\x8C", "relaxed"},
+        {"\xF0\x9F\xA4\xA4", "delicious"},
+        {"\xEF\x98\x98", "kissy"},
+        {"\xEF\x98\x8F", "confident"},
+        {"\xF0\x9F\x98\xB4", "sleepy"},
+        {"\xF0\x9F\x98\x9C", "silly"},
+        {"\xF0\x9F\x99\x84", "confused"}
     };
-    std::string_view emotion_view(emotion);
-    auto it = std::find_if(emotions.begin(), emotions.end(),
-        [&emotion_view](const Emotion& e) { return e.text == emotion_view; });
+    static const int emotions_count = sizeof(emotions) / sizeof(emotions[0]);
+
     DisplayLockGuard lock(this);
-    if (emotion_label_ == nullptr) {
+    if (emotion_label_ == NULL) {
         return;
     }
-    lv_obj_set_style_text_font(emotion_label_, fonts_.emoji_font, 0);
-    if (it != emotions.end()) {
-        lv_label_set_text(emotion_label_, it->icon);
-    } else {
-        lv_label_set_text(emotion_label_, "😶");
+
+    bool found = false;
+    for (int i = 0; i < emotions_count; i++) {
+        if (strcmp(emotion, emotions[i].text) == 0) {
+            lv_obj_set_style_text_font(emotion_label_, fonts_.emoji_font, 0);
+            lv_label_set_text(emotion_label_, emotions[i].icon);
+            found = true;
+            break;
+        }
+    }
+    if (!found) {
+        lv_obj_set_style_text_font(emotion_label_, fonts_.emoji_font, 0);
+        lv_label_set_text(emotion_label_, "\xEF\x98\xB6");
     }
 }
 
 void LcdDisplay::SetIcon(const char* icon) {
     DisplayLockGuard lock(this);
-    if (emotion_label_ == nullptr) {
+    if (emotion_label_ == NULL) {
         return;
     }
     lv_obj_set_style_text_font(emotion_label_, &font_awesome_30_4, 0);
